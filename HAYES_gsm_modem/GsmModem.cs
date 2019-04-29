@@ -23,6 +23,11 @@ namespace HAYES_gsm_modem
         private readonly System.Timers.Timer _timer;
 
         /// <summary>
+        /// Таймер для отслеживания неактивности канала связи
+        /// </summary>
+        private readonly System.Timers.Timer _inactiveTimer; 
+
+        /// <summary>
         /// Счетчик попыток установить соеденение
         /// </summary>
         private int currentTryNumber = 1;
@@ -115,12 +120,32 @@ namespace HAYES_gsm_modem
 
             LinkDelay = 2000;
             ConnectionTimeOut = 15000;
-            InactiveTimeout = 120000;
+            InactiveTimeout = 60000;
             IsConnected = false;
             TryCount = 3;
 
             _timer = new System.Timers.Timer();
             _timer.Stop();
+
+            _inactiveTimer = new System.Timers.Timer();
+            _inactiveTimer.AutoReset = false;
+            _inactiveTimer.Interval = InactiveTimeout;
+            _inactiveTimer.Elapsed += _inactiveTimer_Elapsed;
+            _inactiveTimer.Stop();
+
+            
+        }
+
+        /// <summary>
+        /// Обработчик события таймера неактивности канала связи
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void _inactiveTimer_Elapsed(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            Disconnect();
+            ClosePort();
+            ((System.Timers.Timer)sender).Stop();
         }
 
         /// <summary>
@@ -179,6 +204,7 @@ namespace HAYES_gsm_modem
                     _port.Write("ATH0\r");
                     Thread.Sleep(1500);
 
+                    IsConnected = false;
                     Disconnected(this, null);
                     ClosePort();
 
@@ -208,6 +234,8 @@ namespace HAYES_gsm_modem
         /// <returns></returns>
         public bool Send(byte[] data, int length)
         {
+            _inactiveTimer.Stop();
+            _inactiveTimer.Start();
             try
             {
                 Thread.Sleep(250);
@@ -276,10 +304,12 @@ namespace HAYES_gsm_modem
         /// <param name="e"></param>
         private void Port_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
-            List<byte> buf = new List<byte>();
-            int i = 0;
+            _inactiveTimer.Stop();
+            _inactiveTimer.Start();
 
-            do //Цикл 
+            List<byte> buf = new List<byte>();
+            
+            do 
             {
                 buf.Add(Convert.ToByte(_port.ReadByte()));
 
